@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rampart</title>
+<style>
+:root{--bg:#0e131b;--panel:#18202c;--panel2:#202b3a;--text:#e9eef5;--muted:#8d9bb0;--p0:#e8543c;--p1:#f5c542;--accent:#5aa9ff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{max-width:1100px;margin:0 auto;padding:10px 12px 14px;display:flex;flex-direction:column;gap:8px;min-height:100%}
+#hud{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px;align-items:center;background:var(--panel);border-radius:10px;padding:8px 12px}
+.pl{display:flex;flex-direction:column;gap:1px;font-size:13px;color:var(--muted)}
+.pl b{font-size:16px;color:var(--text)}
+.pl.r{text-align:right;align-items:flex-end}
+.pl .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+#mid{text-align:center}
+#phase{font-weight:700;font-size:16px;letter-spacing:.02em}
+#info{color:var(--muted);font-size:13px;min-height:18px}
+#bar{height:6px;background:#0b1017;border-radius:3px;margin:5px 0 3px;overflow:hidden}
+#barfill{display:block;height:100%;width:0;background:var(--accent);transition:width .1s linear}
+#stage{position:relative;background:#000;border-radius:10px;overflow:hidden;line-height:0}
+canvas{width:100%;height:auto;display:block;cursor:crosshair;touch-action:none}
+.ov{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,18,.78);line-height:1.4;padding:16px}
+.ov.show{display:flex}
+.card{background:var(--panel);border:1px solid #2a384b;border-radius:14px;padding:22px 26px;max-width:520px;width:100%;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.card h1{margin:0 0 4px;font-size:40px;letter-spacing:.14em}
+.card h2{margin:0 0 6px;font-size:26px}
+.card p{margin:6px 0;color:var(--muted)}
+.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+button,.seg label{font:inherit;background:var(--panel2);color:var(--text);border:1px solid #33445c;border-radius:8px;padding:7px 14px;cursor:pointer}
+button:hover,.seg label:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#06101c;border-color:var(--accent);font-weight:700;padding:10px 26px;font-size:16px}
+.seg input{display:none}
+.seg input:checked+label{background:var(--accent);color:#06101c;border-color:var(--accent);font-weight:600}
+.how{text-align:left;font-size:13px;color:var(--muted);margin:10px 0 2px;padding-left:18px}
+.how li{margin:2px 0}
+#banner{position:absolute;left:0;right:0;top:36%;text-align:center;font-size:30px;font-weight:800;letter-spacing:.04em;text-shadow:0 2px 0 #000,0 0 18px rgba(0,0,0,.7);pointer-events:none;opacity:0;transition:opacity .2s;line-height:1.2}
+#banner.show{opacity:1}
+#tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+#tools label{display:flex;align-items:center;gap:6px;cursor:pointer}
+#endBtn{visibility:hidden}
+#endBtn.show{visibility:visible}
+#hint{margin-left:auto}
+@media (max-width:640px){#hud{grid-template-columns:1fr 1fr}#mid{grid-column:1/-1;order:-1}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div class="pl"><b><span class="dot" style="background:var(--p0)"></span><span id="n0">You</span></b><span>Score <span id="sc0">0</span> · Castles <span id="ca0">0</span> · Cannons <span id="cn0">0</span></span></div>
+    <div id="mid"><div id="phase">Rampart</div><div id="bar"><i id="barfill"></i></div><div id="info"></div></div>
+    <div class="pl r"><b><span id="n1">Computer</span><span class="dot" style="background:var(--p1);margin:0 0 0 6px"></span></b><span>Score <span id="sc1">0</span> · Castles <span id="ca1">0</span> · Cannons <span id="cn1">0</span></span></div>
+  </header>
+
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="banner"></div>
+
+    <div id="title" class="ov show"><div class="card">
+      <h1>RAMPART</h1>
+      <p>Build walls. Place cannons. Smash your rival's castle.</p>
+      <div class="row seg">
+        <input type="radio" name="mode" id="m-ai" value="ai" checked><label for="m-ai">vs Computer</label>
+        <input type="radio" name="mode" id="m-pvp" value="pvp"><label for="m-pvp">2 Players (same mouse)</label>
+      </div>
+      <div class="row seg" id="diffrow">
+        <input type="radio" name="diff" id="d0" value="0"><label for="d0">Easy</label>
+        <input type="radio" name="diff" id="d1" value="1" checked><label for="d1">Normal</label>
+        <input type="radio" name="diff" id="d2" value="2"><label for="d2">Hard</label>
+      </div>
+      <ol class="how">
+        <li><b>Claim</b> a castle. Your walls spring up around it.</li>
+        <li><b>Place cannons</b> inside your walls (click).</li>
+        <li><b>Battle:</b> take turns firing at the enemy walls and cannons (click).</li>
+        <li><b>Rebuild:</b> drop wall pieces (click; right-click or R to rotate) to fully seal your castle. A castle left open is destroyed. Seal in extra castles to claim them.</li>
+        <li>Lose every castle and you lose the game. After 8 rounds the biggest empire wins.</li>
+      </ol>
+      <div class="row"><button class="primary" id="startBtn">Start game</button></div>
+    </div></div>
+
+    <div id="ready" class="ov"><div class="card">
+      <h2 id="readyT">Player 2</h2>
+      <p id="readyS">Pass the mouse over.</p>
+      <div class="row"><button class="primary" id="readyBtn">I'm ready</button></div>
+    </div></div>
+
+    <div id="over" class="ov"><div class="card">
+      <h2 id="overT">Game over</h2>
+      <p id="overS"></p>
+      <div class="row"><button class="primary" id="againBtn">Play again</button><button id="menuBtn">Menu</button></div>
+    </div></div>
+  </div>
+
+  <div id="tools">
+    <button id="endBtn">Done (Enter)</button>
+    <label title="Crosshair lags behind the mouse a little, like a trackball"><input type="checkbox" id="trk"> Trackball feel</label>
+    <button id="mute">Sound: on</button>
+    <button id="menu2">Menu</button>
+    <span id="hint"></span>
+  </div>
+</div>
+
+<script>
+(()=>{
+'use strict';
+/* ============================== constants ============================== */
+const W=44,H=30,T=22,MAXR=8;
+const PC=['#e8543c','#f5c542'],PDK=['#8f2412','#9a7408'],PLT=['#ff9a85','#ffe590'];
+const SITES=[[6,6],[6,20],[35,6],[35,20],[15,13],[26,13]]; // castle top-left tiles (castle is 2x2)
+const DIFF=[{err:2.3,rl:2.3},{err:1.3,rl:1.75},{err:0.65,rl:1.35}];
+const HUMAN_RL=1.4;
+const $=id=>document.getElementById(id);
+const cv=$('c'),ctx=cv.getContext('2d');
+cv.width=W*T;cv.height=H*T;
+const idx=(x,y)=>y*W+x, inb=(x,y)=>x>=0&&y>=0&&x<W&&y<H;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rnd=n=>Math.floor(Math.random()*n);
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+/* ================================= state ================================ */
+const G={mode:'ai',diff:1,trk:false,phase:'title',cur:0,round:1,steps:[],over:false,
+  land:null,wall:null,occ:null,castles:[],cannons:[],pl:[],balls:[],parts:[],
+  enc:[null,null],dirty:true,timer:0,timerMax:1,left:0,piece:null,ai:{},intro:null,gapT:0,
+  mouse:{x:W*T/2,y:H*T/2,in:false},aim:{x:W*T/2,y:H*T/2},bannerT:0,hover:-1,seed:1,terr:null,sparks:[],time:0};
+const human=p=>G.mode==='pvp'||p===0;
+const isAI=p=>!human(p);
+const pname=p=>G.mode==='ai'?(p===0?'You':'Computer'):'Player '+(p+1);
+
+/* ================================= audio ================================ */
+let ac=null,muted=false,nbuf=null;
+function actx(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){return null}}
+  if(ac.state==='suspended')ac.resume();
+  if(!nbuf){nbuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);const d=nbuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+  return ac}
+function tone(f0,f1,dur,type,vol,delay){const a=actx();if(!a||muted)return;const t=a.currentTime+(delay||0);
+  const o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);
+  g.gain.setValueAtTime(vol||.12,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g).connect(a.destination);o.start(t);o.stop(t+dur+.02)}
+function noise(dur,vol,f0,f1,delay){const a=actx();if(!a||muted)return;const t=a.currentTime+(delay||0);
+  const s=a.createBufferSource();s.buffer=nbuf;const f=a.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(f0,t);f.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+dur);
+  const g=a.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);s.connect(f).connect(g).connect(a.destination);s.start(t);s.stop(t+dur+.02)}
+function sfx(k){switch(k){
+  case'fire':noise(.25,.22,2400,200);tone(160,50,.2,'triangle',.18);break;
+  case'hit':noise(.22,.2,3000,300);tone(220,70,.15,'square',.06);break;
+  case'splash':noise(.28,.12,5000,900);break;
+  case'place':tone(330,440,.07,'square',.07);break;
+  case'cannon':tone(120,70,.12,'square',.12);noise(.1,.1,900,200);break;
+  case'bad':tone(120,90,.14,'sawtooth',.08);break;
+  case'dry':tone(500,300,.05,'square',.04);break;
+  case'turn':tone(523,523,.12,'triangle',.1);tone(784,784,.18,'triangle',.1,.12);break;
+  case'claim':tone(392,392,.1,'triangle',.12);tone(523,523,.1,'triangle',.12,.1);tone(659,659,.2,'triangle',.12,.2);break;
+  case'lose':tone(300,150,.5,'sawtooth',.1);tone(200,90,.6,'sawtooth',.1,.15);break;
+  case'win':[523,659,784,1047].forEach((f,i)=>tone(f,f,.22,'triangle',.12,i*.14));break;
+}}
+
+/* ================================== map ================================= */
+const inBox=(x,y,m)=>SITES.some(([sx,sy])=>x>=sx-3-m&&x<=sx+4+m&&y>=sy-3-m&&y<=sy+4+m);
+function genMap(){
+  const r=rng(G.seed),land=new Uint8Array(W*H);
+  const walk=(n,max)=>{let v=r()*max;const a=[];for(let i=0;i<n;i++){v=clamp(v+(r()-.5)*1.3,0,max);a.push(Math.round(v))}return a};
+  const top=walk(W,1.4),bot=walk(W,1.4),lf=walk(H,1.4),rt=walk(H,1.4);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(x>=2+lf[y]&&x<=W-3-rt[y]&&y>=2+top[x]&&y<=H-3-bot[x])land[idx(x,y)]=1;
+  let rx=20.4;
+  for(let y=0;y<H;y++){rx=clamp(rx+(r()-.5)*1.1,20,21.4);const x0=Math.round(rx);land[idx(x0,y)]=0;land[idx(x0+1,y)]=0}
+  for(let k=0;k<9;k++){const lx=3+Math.floor(r()*(W-6)),ly=3+Math.floor(r()*(H-6)),rad=1+r()*1.6;
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const x=lx+dx,y=ly+dy;if(inb(x,y)&&dx*dx+dy*dy<=rad*rad+.5&&!inBox(x,y,1)&&x>2&&y>2&&x<W-3&&y<H-3)land[idx(x,y)]=0}}
+  for(const[sx,sy]of SITES)for(let y=sy-3;y<=sy+4;y++)for(let x=sx-3;x<=sx+4;x++)land[idx(x,y)]=1;
+  G.land=land;G.wall=new Int8Array(W*H).fill(-1);G.occ=new Uint8Array(W*H);
+  G.castles=SITES.map(([x,y],i)=>({x,y,owner:-1,dead:false,start:i<4}));
+  for(const c of G.castles)for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)G.occ[idx(c.x+dx,c.y+dy)]=1;
+  G.cannons=[];G.balls=[];G.parts=[];G.dirty=true;
+  renderTerrain();
+}
+function renderTerrain(){
+  const r=rng(G.seed+7),tc=document.createElement('canvas');tc.width=W*T;tc.height=H*T;const t=tc.getContext('2d');
+  const greens=['#5fa046','#66a94b','#5a9a42'],waters=['#2d73b8','#2b6db0','#2f78bf'];
+  G.sparks=[];
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=idx(x,y),px=x*T,py=y*T;
+    if(G.land[i]){t.fillStyle=greens[Math.floor(r()*3)];t.fillRect(px,py,T,T)}
+    else{t.fillStyle=waters[Math.floor(r()*3)];t.fillRect(px,py,T,T);if(r()<.12)G.sparks.push({x:px+r()*T,y:py+r()*T,ph:r()*6.28})}}
+  t.fillStyle='#d9c98c';
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!G.land[idx(x,y)])continue;const px=x*T,py=y*T;
+    if(!inb(x,y-1)||!G.land[idx(x,y-1)])t.fillRect(px,py,T,3);
+    if(!inb(x,y+1)||!G.land[idx(x,y+1)])t.fillRect(px,py+T-3,T,3);
+    if(!inb(x-1,y)||!G.land[idx(x-1,y)])t.fillRect(px,py,3,T);
+    if(!inb(x+1,y)||!G.land[idx(x+1,y)])t.fillRect(px+T-3,py,3,T)}
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!G.land[idx(x,y)]||inBox(x,y,1)||r()>.07)continue;
+    const cx=x*T+T/2,cy=y*T+T/2;t.fillStyle='rgba(0,0,0,.2)';t.beginPath();t.ellipse(cx+2,cy+6,7,3,0,0,6.28);t.fill();
+    t.fillStyle='#2f6b2a';t.beginPath();t.arc(cx,cy,7,0,6.28);t.fill();t.fillStyle='#3d8736';t.beginPath();t.arc(cx-2,cy-2,4,0,6.28);t.fill()}
+  G.terr=tc;
+}
+
+/* ============================= enclosure logic ========================== */
+function enclosure(p){ // out[i]=1 if tile reachable from the map edge without crossing player p's walls
+  const out=new Uint8Array(W*H),st=[0],wall=G.wall;out[0]=1;
+  while(st.length){const i=st.pop(),x=i%W,y=(i/W)|0;let j;
+    if(x>0){j=i-1;if(!out[j]&&wall[j]!==p){out[j]=1;st.push(j)}}
+    if(x<W-1){j=i+1;if(!out[j]&&wall[j]!==p){out[j]=1;st.push(j)}}
+    if(y>0){j=i-W;if(!out[j]&&wall[j]!==p){out[j]=1;st.push(j)}}
+    if(y<H-1){j=i+W;if(!out[j]&&wall[j]!==p){out[j]=1;st.push(j)}}}
+  return out}
+function area(out,p){let n=0;for(let i=0;i<W*H;i++)if(G.land[i]&&!out[i]&&G.wall[i]!==p)n++;return n}
+function castleEncl(out,c){return !out[idx(c.x,c.y)]&&!out[idx(c.x+1,c.y)]&&!out[idx(c.x,c.y+1)]&&!out[idx(c.x+1,c.y+1)]}
+function refreshEnc(){if(G.dirty){G.enc=[enclosure(0),enclosure(1)];G.dirty=false}}
+const ownedCastles=p=>G.castles.filter(c=>c.owner===p&&!c.dead);
+
+/* ================================ pieces ================================ */
+const SHAPES=[[[[0,0]],2],[[[0,0],[1,0]],3],[[[0,0],[1,0],[0,1]],4],[[[0,0],[1,0],[2,0]],3],[[[0,0],[1,0],[0,1],[1,1]],2],
+  [[[0,0],[1,0],[2,0],[1,1]],3],[[[0,0],[0,1],[0,2],[1,2]],3],[[[1,0],[1,1],[1,2],[0,2]],3],[[[1,0],[2,0],[0,1],[1,1]],2],
+  [[[0,0],[1,0],[1,1],[2,1]],2],[[[0,0],[1,0],[2,0],[3,0]],2],[[[0,0],[1,0],[0,1],[1,1],[0,2]],1],[[[0,0],[2,0],[0,1],[1,1],[2,1]],1],
+  [[[1,0],[0,1],[1,1],[2,1],[1,2]],1],[[[0,0],[0,1],[0,2],[0,3],[1,3]],1]];
+function newPiece(){let tot=0;for(const s of SHAPES)tot+=s[1];let n=Math.random()*tot;
+  for(const s of SHAPES){n-=s[1];if(n<=0)return s[0].map(c=>c.slice())}return [[0,0]]}
+function rotate(cells){const r=cells.map(([x,y])=>[-y,x]);const mx=Math.min(...r.map(c=>c[0])),my=Math.min(...r.map(c=>c[1]));return r.map(([x,y])=>[x-mx,y-my])}
+function pieceTiles(cells,mx,my){const w=Math.max(...cells.map(c=>c[0]))+1,h=Math.max(...cells.map(c=>c[1]))+1;
+  const ox=mx-Math.floor(w/2),oy=my-Math.floor(h/2);return cells.map(([x,y])=>[ox+x,oy+y])}
+function validWall(x,y){if(!inb(x,y))return false;const i=idx(x,y);return G.land[i]===1&&G.wall[i]<0&&G.occ[i]===0}
+function piecePlaceable(tiles){return tiles.every(([x,y])=>validWall(x,y))}
+function placeWalls(p,tiles){for(const[x,y]of tiles){const i=idx(x,y);G.wall[i]=p;G.pl[p].lost.delete(i);puff(x*T+T/2,y*T+T/2,4,PLT[p],40,.35)}G.dirty=true}
+
+/* ============================ effects / helpers ========================= */
+function puff(x,y,n,col,sp,life){for(let i=0;i<n;i++){const a=Math.random()*6.283,v=sp*(.3+Math.random()*.9);
+  G.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-sp*.15,l:life*(.6+Math.random()*.6),m:life,c:col,r:1.5+Math.random()*2.5})}}
+function showBanner(text,col,dur){const b=$('banner');b.textContent=text;b.style.color=col||'#fff';b.classList.add('show');G.bannerT=dur||0}
+function hideBanner(){$('banner').classList.remove('show');G.bannerT=0}
+
+/* ============================== game flow =============================== */
+function roundSteps(){return[['cannons',0],['cannons',1],['battle',0],['battle',1],['rebuild',0],['rebuild',1]]}
+function newGame(){
+  G.mode=document.querySelector('input[name=mode]:checked').value;
+  G.diff=+document.querySelector('input[name=diff]:checked').value;
+  G.seed=(Math.random()*1e9)|0;
+  G.pl=[{score:0,lost:new Set()},{score:0,lost:new Set()}];
+  genMap();
+  G.round=1;G.over=false;G.steps=[['select',0],['select',1],...roundSteps()];
+  $('n0').textContent=pname(0);$('n1').textContent=pname(1);
+  ['title','over','ready'].forEach(i=>$(i).classList.remove('show'));
+  advance();
+}
+function advance(){
+  if(G.over)return;
+  if(!G.steps.length){G.round++;if(G.round>MAXR){finishByRounds();return}G.steps=roundSteps()}
+  const[ph,p]=G.steps.shift();beginIntro(ph,p);
+}
+const PHASE_TEXT={select:'Choose your castle',cannons:'Place your cannons',battle:'Battle! Fire at the enemy',rebuild:'Rebuild your walls'};
+function beginIntro(ph,p){
+  G.cur=p;G.phase='intro';G.intro={ph,p,t:1.25,wait:false};
+  $('endBtn').classList.remove('show');
+  if(G.mode==='pvp'){G.intro.wait=true;$('readyT').textContent=pname(p)+' — '+PHASE_TEXT[ph];$('readyT').style.color=PC[p];
+    $('readyS').textContent=ph==='battle'?'You fire at '+pname(1-p)+'.':'Take the mouse.';$('ready').classList.add('show');sfx('turn')}
+  else{showBanner(p===0?(ph==='battle'?'Your turn: Fire!':PHASE_TEXT[ph]):'Computer: '+(ph==='select'?'choosing castle':ph==='cannons'?'placing cannons':ph==='battle'?'attacking!':'rebuilding'),PC[p],0);sfx('turn')}
+  setHud(true);
+}
+function startPhase(){
+  const{ph,p}=G.intro;G.phase=ph;G.cur=p;hideBanner();$('ready').classList.remove('show');G.dirty=true;refreshEnc();
+  if(ph==='select'){G.timer=0;G.timerMax=1;G.ai={t:1.0}}
+  else if(ph==='cannons'){G.left=allowance(p);G.timer=G.timerMax=12;G.ai={t:.5};if(!G.left){endPhase();return}}
+  else if(ph==='battle'){const out=G.enc[p];
+    for(const c of G.cannons)if(c.owner===p){c.active=true;c.rl=.3+Math.random()*.9;c.aiT=Math.random()*.8}
+    G.timer=G.timerMax=12;G.ai={}}
+  else if(ph==='rebuild'){G.piece=newPiece();G.timer=G.timerMax=14;G.ai={t:.5,n:0}}
+  $('endBtn').classList.toggle('show',human(p)&&(ph==='cannons'||ph==='rebuild'));
+  setHud(true);
+}
+function allowance(p){if(G.round===1)return 3;const out=enclosure(p);return Math.min(8,1+ownedCastles(p).length+Math.floor(area(out,p)/25))}
+function endPhase(){
+  const p=G.cur,ph=G.phase;$('endBtn').classList.remove('show');
+  if(ph==='cannons'||ph==='select'){G.phase='gap';G.gapT=.4}
+  else if(ph==='battle'){G.phase='battleEnd';G.gapT=.7}
+  else if(ph==='rebuild'){finishRebuild(p);if(!G.over){G.phase='gap';G.gapT=1.2}}
+}
+function claimCastle(p,c){
+  c.owner=p;const{x:cx,y:cy}=c;
+  for(let y=cy-3;y<=cy+4;y++)for(let x=cx-3;x<=cx+4;x++)if(x===cx-3||x===cx+4||y===cy-3||y===cy+4)G.wall[idx(x,y)]=p;
+  G.dirty=true;sfx('claim');puff((cx+1)*T,(cy+1)*T,24,PLT[p],110,.7);endPhase();
+}
+function finishRebuild(p){
+  const out=enclosure(p);G.enc[p]=out;const msg=[];let gained=0,lost=0;
+  for(const c of G.castles){const e=castleEncl(out,c);
+    if(c.owner===p&&!c.dead&&!e){c.dead=true;c.owner=-1;lost++;puff((c.x+1)*T,(c.y+1)*T,40,'#555',130,1)}
+    else if(c.owner===-1&&!c.dead&&e){c.owner=p;gained++}}
+  const a=area(out,p);G.pl[p].score+=a+ownedCastles(p).length*50;G.pl[p].lost=new Set();
+  if(lost)msg.push(lost+' castle'+(lost>1?'s':'')+' destroyed!');
+  if(gained)msg.push(gained+' castle'+(gained>1?'s':'')+' claimed!');
+  if(!msg.length)msg.push('Walls hold.');
+  showBanner(pname(p)+': '+msg.join(' '),PC[p],1.2);sfx(lost?'lose':gained?'claim':'place');
+  G.dirty=true;
+  if(!ownedCastles(p).length)endGame(1-p,pname(p)+(G.mode==='ai'&&p===0?' have':' has')+' lost every castle.');
+}
+function finishByRounds(){
+  const a=ownedCastles(0).length,b=ownedCastles(1).length;let w;
+  if(a!==b)w=a>b?0:1;else if(G.pl[0].score!==G.pl[1].score)w=G.pl[0].score>G.pl[1].score?0:1;else w=-1;
+  endGame(w,'Eight rounds are up.');
+}
+function endGame(w,why){
+  G.over=true;G.phase='over';$('endBtn').classList.remove('show');
+  $('overT').textContent=w<0?'A draw!':(G.mode==='ai'?(w===0?'You win!':'Computer wins'):pname(w)+' wins!');
+  $('overT').style.color=w<0?'#fff':PC[w];
+  $('overS').textContent=why+'  Final score: '+pname(0)+' '+G.pl[0].score+' — '+pname(1)+' '+G.pl[1].score;
+  setTimeout(()=>{if(G.phase==='over')$('over').classList.add('show')},1500);sfx(G.mode==='ai'&&w!==0?'lose':'win');
+}
+
+/* ================================ battle ================================ */
+function fire(c,tx,ty){
+  const sx=(c.x+1)*T,sy=(c.y+1)*T,d=Math.hypot(tx-sx,ty-sy);
+  c.rl=(G.mode==='pvp'||c.owner===0)?HUMAN_RL:DIFF[G.diff].rl;c.ang=Math.atan2(ty-sy,tx-sx);c.kick=1;
+  G.balls.push({sx,sy,tx,ty,t:0,dur:.35+d/650,owner:c.owner,h:clamp(d*.22,25,110)});
+  puff(sx+Math.cos(c.ang)*22,sy+Math.sin(c.ang)*22,6,'#ddd',50,.5);sfx('fire');
+}
+function humanFire(){
+  const p=G.cur,c=G.cannons.filter(c=>c.owner===p&&c.active&&c.hp>0&&c.rl<=0);
+  if(!c.length){sfx('dry');return}
+  const dd=k=>Math.hypot((k.x+1)*T-G.aim.x,(k.y+1)*T-G.aim.y);
+  c.sort((a,b)=>dd(a)-dd(b));fire(c[0],G.aim.x,G.aim.y);
+}
+function impact(b){
+  const en=1-b.owner,tx=Math.floor(b.tx/T),ty=Math.floor(b.ty/T);let hit=0,hitC=0;
+  for(let y=ty-2;y<=ty+2;y++)for(let x=tx-2;x<=tx+2;x++){if(!inb(x,y))continue;const i=idx(x,y);
+    if(G.wall[i]===en&&Math.hypot(x*T+T/2-b.tx,y*T+T/2-b.ty)<T*.95){G.wall[i]=-1;G.pl[en].lost.add(i);hit++;G.dirty=true;puff(x*T+T/2,y*T+T/2,8,'#b9b3a5',90,.6)}}
+  for(let k=G.cannons.length-1;k>=0;k--){const c=G.cannons[k];if(c.owner!==en)continue;
+    if(b.tx>c.x*T-5&&b.tx<(c.x+2)*T+5&&b.ty>c.y*T-5&&b.ty<(c.y+2)*T+5){c.hp--;hitC++;
+      puff((c.x+1)*T,(c.y+1)*T,16,'#ff9a3c',120,.6);
+      if(c.hp<=0){for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)G.occ[idx(c.x+dx,c.y+dy)]=0;G.cannons.splice(k,1);G.pl[b.owner].score+=40;puff((c.x+1)*T,(c.y+1)*T,30,'#444',140,1)}}}
+  G.pl[b.owner].score+=hit*10;
+  const onLand=inb(tx,ty)&&G.land[idx(tx,ty)];
+  if(hit||hitC){sfx('hit');puff(b.tx,b.ty,12,'#ffb347',110,.45)}
+  else if(!onLand){sfx('splash');puff(b.tx,b.ty,12,'#bfe3ff',90,.5)}
+  else{sfx('dry');puff(b.tx,b.ty,8,'#8b6b3d',70,.4)}
+}
+function aiTarget(en){
+  const cs=G.cannons.filter(c=>c.owner===en);
+  if(cs.length&&Math.random()<.3){const c=cs[rnd(cs.length)];return{x:(c.x+1)*T,y:(c.y+1)*T}}
+  const w=[];for(let i=0;i<W*H;i++)if(G.wall[i]===en)w.push(i);
+  if(w.length){const i=w[rnd(w.length)];return{x:(i%W)*T+T/2,y:((i/W)|0)*T+T/2}}
+  if(cs.length){const c=cs[rnd(cs.length)];return{x:(c.x+1)*T,y:(c.y+1)*T}}
+  return null}
+function aiBattle(dt){
+  const p=G.cur;
+  for(const c of G.cannons){if(c.owner!==p||!c.active)continue;c.aiT-=dt;
+    if(c.rl<=0&&c.aiT<=0){const t=aiTarget(1-p);if(!t)return;const e=DIFF[G.diff].err*T,a=Math.random()*6.283,d=Math.sqrt(Math.random())*e;
+      fire(c,t.x+Math.cos(a)*d,t.y+Math.sin(a)*d);c.aiT=.2+Math.random()*.5}}
+}
+
+/* ================================== AI ================================== */
+function cannonSpots(p){const out=G.enc[p],r=[];
+  for(let y=0;y<H-1;y++)for(let x=0;x<W-1;x++){let ok=true;
+    for(let dy=0;dy<2&&ok;dy++)for(let dx=0;dx<2;dx++){const i=idx(x+dx,y+dy);if(!G.land[i]||G.wall[i]>=0||G.occ[i]||out[i]){ok=false;break}}
+    if(ok)r.push([x,y])}
+  return r}
+function addCannon(p,x,y){G.cannons.push({x,y,owner:p,hp:2,rl:0,ang:p===0?0:Math.PI,kick:0,active:true,aiT:0});
+  for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)G.occ[idx(x+dx,y+dy)]=2;sfx('cannon');puff((x+1)*T,(y+1)*T,8,'#d8d2c4',60,.4)}
+function aiCannons(dt){G.ai.t-=dt;if(G.ai.t>0)return;G.ai.t=.3;
+  const s=cannonSpots(G.cur);if(!s.length||G.left<=0){endPhase();return}
+  const[x,y]=s[rnd(s.length)];addCannon(G.cur,x,y);G.left--;if(G.left<=0)endPhase()}
+function aiSelect(dt){G.ai.t-=dt;if(G.ai.t>0)return;
+  const free=G.castles.filter(c=>c.start&&c.owner===-1),other=G.castles.find(c=>c.owner===0);
+  let pool=free;if(other){const far=free.filter(c=>Math.abs(c.x-other.x)>15);if(far.length)pool=far}
+  claimCastle(G.cur,pool[rnd(pool.length)])}
+function aiRebuild(dt){
+  G.ai.t-=dt;if(G.ai.t>0)return;G.ai.t=.32;
+  const p=G.cur,pl=G.pl[p],near=new Uint8Array(W*H);
+  const mark=(x,y)=>{for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){const a=x+dx,b=y+dy;if(inb(a,b))near[idx(a,b)]=1}};
+  for(let i=0;i<W*H;i++)if(G.wall[i]===p)mark(i%W,(i/W)|0);
+  for(const c of ownedCastles(p))mark(c.x,c.y);
+  const claimable=G.castles.filter(c=>!c.dead&&(c.owner===p||c.owner===-1));
+  const lostLeft=[...pl.lost].filter(i=>G.wall[i]<0).length;
+  const base=enclosure(p);let ce0=0;for(const c of claimable)if(castleEncl(base,c))ce0++;const ar0=area(base,p);
+  let best=null,bs=-1e9,cells=G.piece;
+  for(let rot=0;rot<4;rot++){
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!near[idx(x,y)])continue;
+      const tiles=pieceTiles(cells,x,y);if(!piecePlaceable(tiles))continue;
+      let adj=0,lostHit=0;const set=new Set(tiles.map(t=>idx(t[0],t[1])));
+      for(const[tx,ty]of tiles){const i=idx(tx,ty);if(pl.lost.has(i))lostHit++;
+        for(const[a,b]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=tx+a,ny=ty+b;if(inb(nx,ny)&&G.wall[idx(nx,ny)]===p&&!set.has(idx(nx,ny)))adj++}}
+      if(!adj&&!lostHit)continue;
+      for(const[tx,ty]of tiles)G.wall[idx(tx,ty)]=p;
+      const out=enclosure(p);let ce=0;for(const c of claimable)if(castleEncl(out,c))ce++;const ar=area(out,p);
+      for(const[tx,ty]of tiles)G.wall[idx(tx,ty)]=-1;
+      const gain=(ce-ce0)*500+(ar-ar0)*2;
+      if(lostLeft>0&&!lostHit)continue;
+      if(lostLeft===0&&gain<=0)continue;
+      let s=gain+lostHit*10+adj*2+Math.random()*2;
+      if(lostLeft>0)s-=(tiles.length-lostHit)*2.5;
+      if(s>bs){bs=s;best={tiles}}}
+    cells=rotate(cells)}
+  G.ai.tries=(G.ai.tries||0)+1;
+  if(best){placeWalls(p,best.tiles);sfx('place');G.ai.n++}
+  else if(lostLeft===0||G.ai.tries>30){endPhase();return}
+  G.piece=newPiece();
+  if(G.ai.n>=40)endPhase();
+}
+
+/* ================================= update =============================== */
+function update(dt){
+  G.time+=dt;
+  if(G.trk){const k=1-Math.exp(-dt*8);G.aim.x+=(G.mouse.x-G.aim.x)*k;G.aim.y+=(G.mouse.y-G.aim.y)*k}else{G.aim.x=G.mouse.x;G.aim.y=G.mouse.y}
+  if(G.bannerT>0){G.bannerT-=dt;if(G.bannerT<=0)$('banner').classList.remove('show')}
+  for(const c of G.cannons){if(c.rl>0)c.rl-=dt;if(c.kick>0)c.kick=Math.max(0,c.kick-dt*5)}
+  if(G.phase==='battle'&&human(G.cur))for(const c of G.cannons)if(c.owner===G.cur)c.ang=Math.atan2(G.aim.y-(c.y+1)*T,G.aim.x-(c.x+1)*T);
+  for(let i=G.balls.length-1;i>=0;i--){const b=G.balls[i];b.t+=dt/b.dur;if(b.t>=1){impact(b);G.balls.splice(i,1)}}
+  for(let i=G.parts.length-1;i>=0;i--){const q=G.parts[i];q.l-=dt;if(q.l<=0){G.parts.splice(i,1);continue}q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=.96;q.vy*=.96}
+  const ph=G.phase,p=G.cur;
+  if(ph==='intro'&&!G.intro.wait){G.intro.t-=dt;if(G.intro.t<=0)startPhase()}
+  else if(ph==='gap'){G.gapT-=dt;if(G.gapT<=0)advance()}
+  else if(ph==='battleEnd'){G.gapT-=dt;if(G.balls.length)G.gapT=Math.max(G.gapT,.5);if(G.gapT<=0)advance()}
+  else if(ph==='select'){if(isAI(p))aiSelect(dt);else G.hover=hoverCastle()}
+  else if(ph==='cannons'||ph==='battle'||ph==='rebuild'){
+    G.timer-=dt;
+    if(ph==='cannons'&&isAI(p))aiCannons(dt);
+    if(ph==='battle'&&isAI(p))aiBattle(dt);
+    if(ph==='rebuild'&&isAI(p))aiRebuild(dt);
+    if(G.timer<=0&&G.phase===ph)endPhase();
+  }
+  refreshEnc();
+}
+function hoverCastle(){const x=G.mouse.x/T,y=G.mouse.y/T;
+  for(let i=0;i<G.castles.length;i++){const c=G.castles[i];if(c.start&&c.owner===-1&&x>=c.x-1&&x<=c.x+3&&y>=c.y-1&&y<=c.y+3)return i}return -1}
+
+/* ================================= drawing ============================== */
+function drawWall(x,y,p){const px=x*T,py=y*T;
+  ctx.fillStyle='#5b5f68';ctx.fillRect(px,py,T,T);
+  ctx.fillStyle='#bdb7a8';ctx.fillRect(px+1,py+1,T-2,T-2);
+  ctx.fillStyle='#8f897b';ctx.fillRect(px+1,py+T-4,T-2,3);
+  ctx.fillStyle=PC[p];ctx.fillRect(px+1,py+1,T-2,4);ctx.fillStyle=PDK[p];ctx.fillRect(px+1,py+5,T-2,1);
+  ctx.fillStyle='#8f897b';ctx.fillRect(px+1,py+T/2+1,T-2,1);
+  const a=((x+y)&1)?T/3:T*2/3,b=((x+y)&1)?T*2/3:T/3;ctx.fillRect(px+a,py+6,1,T/2-5);ctx.fillRect(px+b,py+T/2+1,1,T/2-5)}
+function drawCastle(c){const px=c.x*T,py=c.y*T,s=2*T,col=c.owner>=0?PC[c.owner]:'#9aa0aa';
+  if(c.dead){ctx.fillStyle='#4b4b50';for(const[a,b,w,h]of[[4,18,16,12],[22,24,14,10],[10,8,10,10],[30,10,9,9],[16,30,12,8]])ctx.fillRect(px+a,py+b,w,h);ctx.fillStyle='#2e2e33';ctx.fillRect(px+8,py+22,8,4);return}
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(px+4,py+s-6,s-6,6);
+  ctx.fillStyle='#8c8678';ctx.fillRect(px+6,py+12,s-12,s-14);
+  ctx.fillStyle='#a8a292';ctx.fillRect(px+6,py+12,s-12,4);
+  for(const tx of[1,s-13]){ctx.fillStyle='#9a9484';ctx.fillRect(px+tx,py+6,12,s-8);ctx.fillStyle='#b9b3a3';ctx.fillRect(px+tx,py+6,12,3);
+    for(let k=0;k<3;k++){ctx.fillStyle='#9a9484';ctx.fillRect(px+tx+k*5,py+2,3,5)}}
+  ctx.fillStyle='#3a342c';ctx.beginPath();ctx.moveTo(px+s/2-6,py+s-2);ctx.lineTo(px+s/2-6,py+s-14);ctx.arc(px+s/2,py+s-14,6,Math.PI,0);ctx.lineTo(px+s/2+6,py+s-2);ctx.fill();
+  ctx.fillStyle='#4a4234';ctx.fillRect(px+s/2-1,py-6,2,14);ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(px+s/2+1,py-6);ctx.lineTo(px+s/2+13,py-2);ctx.lineTo(px+s/2+1,py+2);ctx.fill()}
+function drawCannon(c){const cx=(c.x+1)*T,cy=(c.y+1)*T;
+  const inact=(G.phase==='battle'||G.phase==='battleEnd')&&c.owner===G.cur&&c.active===false;
+  ctx.save();ctx.translate(cx,cy);ctx.globalAlpha=inact?.45:1;
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(2,4,18,15,0,0,6.28);ctx.fill();
+  ctx.fillStyle=PDK[c.owner];ctx.beginPath();ctx.arc(0,0,18,0,6.28);ctx.fill();
+  ctx.fillStyle='#4b505c';ctx.beginPath();ctx.arc(0,0,14,0,6.28);ctx.fill();
+  ctx.strokeStyle=PC[c.owner];ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,14,0,6.28);ctx.stroke();
+  ctx.rotate(c.ang);const o=-c.kick*5;
+  ctx.fillStyle='#23262d';ctx.fillRect(-5+o,-4.5,25,9);ctx.fillStyle='#14161a';ctx.fillRect(16+o,-6,6,12);
+  ctx.fillStyle=PC[c.owner];ctx.beginPath();ctx.arc(0,0,5,0,6.28);ctx.fill();
+  ctx.restore();
+  if(c.hp===1){ctx.strokeStyle='#ff5a3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx-8,cy-12);ctx.lineTo(cx-2,cy-4);ctx.lineTo(cx-8,cy+2);ctx.stroke()}}
+function rectTiles(x,y,w,h,ok){ctx.fillStyle=ok?'rgba(80,255,120,.35)':'rgba(255,70,70,.38)';ctx.fillRect(x*T,y*T,w*T,h*T);ctx.strokeStyle=ok?'#6dff95':'#ff6a6a';ctx.lineWidth=2;ctx.strokeRect(x*T+1,y*T+1,w*T-2,h*T-2)}
+function cannonOk(p,x,y){for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){const a=x+dx,b=y+dy;if(!inb(a,b)||!G.land[idx(a,b)]||G.wall[idx(a,b)]>=0||G.occ[idx(a,b)]||G.enc[p][idx(a,b)])return false}return true}
+function draw(){
+  ctx.drawImage(G.terr,0,0);
+  ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1.5;
+  for(const s of G.sparks){const o=Math.sin(G.time*1.5+s.ph);if(o>.3){ctx.globalAlpha=(o-.3)*.9;ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+6,s.y);ctx.stroke()}}
+  ctx.globalAlpha=1;
+  for(let p=0;p<2;p++){const out=G.enc[p];if(!out)continue;ctx.fillStyle=p?'rgba(245,197,66,.16)':'rgba(232,84,60,.17)';
+    for(let i=0;i<W*H;i++)if(G.land[i]&&!out[i]&&G.wall[i]!==p)ctx.fillRect((i%W)*T,((i/W)|0)*T,T,T)}
+  for(let i=0;i<W*H;i++)if(G.wall[i]>=0)drawWall(i%W,(i/W)|0,G.wall[i]);
+  if(G.phase==='rebuild'&&human(G.cur)){ctx.fillStyle='rgba(255,255,255,.3)';for(const i of G.pl[G.cur].lost)if(G.wall[i]<0)ctx.fillRect((i%W)*T+6,((i/W)|0)*T+6,T-12,T-12)}
+  for(const c of G.castles)drawCastle(c);
+  if(G.phase==='select'&&human(G.cur)){
+    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=2;
+    for(const c of G.castles)if(c.start&&c.owner===-1){const k=3+Math.sin(G.time*4)*1.5;ctx.strokeRect(c.x*T-k,c.y*T-k,2*T+2*k,2*T+2*k)}
+    if(G.hover>=0){const c=G.castles[G.hover];ctx.strokeStyle=PC[G.cur];ctx.lineWidth=3;ctx.setLineDash([6,4]);ctx.strokeRect((c.x-3)*T,(c.y-3)*T,8*T,8*T);ctx.setLineDash([])}}
+  for(const c of G.cannons)drawCannon(c);
+  const m=G.mouse,hum=human(G.cur);
+  if(G.phase==='cannons'&&hum&&m.in&&G.left>0){const x=Math.round(m.x/T-1),y=Math.round(m.y/T-1);rectTiles(x,y,2,2,cannonOk(G.cur,x,y))}
+  if(G.phase==='rebuild'&&hum&&m.in&&G.piece){const t=pieceTiles(G.piece,Math.floor(m.x/T),Math.floor(m.y/T)),ok=piecePlaceable(t);
+    for(const[x,y]of t)if(inb(x,y)){ctx.fillStyle=ok?'rgba(255,255,255,.6)':'rgba(255,70,70,.55)';ctx.fillRect(x*T,y*T,T,T);ctx.strokeStyle=ok?PC[G.cur]:'#ff4040';ctx.lineWidth=2;ctx.strokeRect(x*T+1,y*T+1,T-2,T-2)}}
+  for(const b of G.balls){const x=b.sx+(b.tx-b.sx)*b.t,y=b.sy+(b.ty-b.sy)*b.t,h=Math.sin(b.t*Math.PI)*b.h;
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(x,y,5,3,0,0,6.28);ctx.fill();
+    ctx.fillStyle='#202226';ctx.beginPath();ctx.arc(x,y-h,5+h*.03,0,6.28);ctx.fill();ctx.fillStyle='#8a8f99';ctx.beginPath();ctx.arc(x-1.5,y-h-1.5,1.8,0,6.28);ctx.fill()}
+  for(const q of G.parts){ctx.globalAlpha=clamp(q.l/q.m,0,1);ctx.fillStyle=q.c;ctx.beginPath();ctx.arc(q.x,q.y,q.r*(.5+q.l/q.m*.7),0,6.28);ctx.fill()}
+  ctx.globalAlpha=1;
+  if(G.phase==='battle'&&hum){const a=G.aim;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(a.x,a.y,13,0,6.28);
+    ctx.moveTo(a.x-20,a.y);ctx.lineTo(a.x-6,a.y);ctx.moveTo(a.x+6,a.y);ctx.lineTo(a.x+20,a.y);ctx.moveTo(a.x,a.y-20);ctx.lineTo(a.x,a.y-6);ctx.moveTo(a.x,a.y+6);ctx.lineTo(a.x,a.y+20);ctx.stroke();
+    ctx.strokeStyle=PC[G.cur];ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(a.x,a.y,16,0,6.28);ctx.stroke();
+    const ready=G.cannons.filter(c=>c.owner===G.cur&&c.active&&c.rl<=0).length;ctx.fillStyle='#fff';ctx.font='bold 12px system-ui';ctx.fillText(ready+' ready',a.x+18,a.y-16)}
+}
+
+/* ================================== HUD ================================= */
+let lastHud='';
+function setHud(force){
+  const pn=G.phase;let t='Rampart',info='';
+  const round='Round '+Math.min(G.round,MAXR)+'/'+MAXR;
+  if(['intro','select','cannons','battle','rebuild','battleEnd','gap'].includes(pn)){
+    const ph=pn==='intro'?G.intro.ph:(pn==='battleEnd'?'battle':(pn==='gap'?'':pn));
+    t=(ph?PHASE_TEXT[ph]:'…')+' — '+pname(G.cur);
+    if(pn==='cannons')info=G.left+' cannon'+(G.left===1?'':'s')+' to place · '+round;
+    else if(pn==='select')info=human(G.cur)?'Click a flashing castle · '+round:round;
+    else if(pn==='battle')info=human(G.cur)?'Click to fire your nearest ready cannon · '+round:round;
+    else if(pn==='rebuild')info=human(G.cur)?'Click to place · right-click / R / wheel to rotate · '+round:round;
+    else info=round}
+  const k=t+'|'+info+'|'+(G.pl[0]?G.pl.map(p=>p.score).join():'')+'|'+G.castles.map(c=>c.owner).join()+'|'+G.cannons.length;
+  if(!force&&k===lastHud)return;lastHud=k;
+  $('phase').textContent=t;$('phase').style.color=(pn==='title'||pn==='over')?'#fff':PC[G.cur];$('info').textContent=info;
+  for(let p=0;p<2;p++){$('sc'+p).textContent=G.pl[p]?G.pl[p].score:0;$('ca'+p).textContent=ownedCastles(p).length;$('cn'+p).textContent=G.cannons.filter(c=>c.owner===p).length}
+}
+function setBar(){const live=G.phase==='cannons'||G.phase==='battle'||G.phase==='rebuild';const f=live?clamp(G.timer/G.timerMax,0,1):0;
+  $('barfill').style.width=(f*100)+'%';$('barfill').style.background=PC[G.cur]}
+
+/* ================================== input =============================== */
+function canvasPos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height}}
+cv.addEventListener('pointermove',e=>{const p=canvasPos(e);G.mouse.x=p.x;G.mouse.y=p.y;G.mouse.in=true});
+cv.addEventListener('pointerleave',()=>{G.mouse.in=false});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('wheel',e=>{if(G.phase==='rebuild'&&human(G.cur)){e.preventDefault();rotatePiece()}},{passive:false});
+cv.addEventListener('pointerdown',e=>{
+  const p=canvasPos(e);G.mouse.x=p.x;G.mouse.y=p.y;G.mouse.in=true;if(!G.trk){G.aim.x=p.x;G.aim.y=p.y}
+  actx();const ph=G.phase,cur=G.cur;if(!human(cur))return;
+  if(e.button===2){if(ph==='rebuild')rotatePiece();return}
+  if(ph==='select'){const i=hoverCastle();if(i>=0)claimCastle(cur,G.castles[i])}
+  else if(ph==='cannons'&&G.left>0){const x=Math.round(p.x/T-1),y=Math.round(p.y/T-1);
+    if(cannonOk(cur,x,y)){addCannon(cur,x,y);G.left--;if(G.left<=0)endPhase()}else sfx('bad')}
+  else if(ph==='battle'&&G.timer>0)humanFire();
+  else if(ph==='rebuild'){const t=pieceTiles(G.piece,Math.floor(p.x/T),Math.floor(p.y/T));
+    if(piecePlaceable(t)){placeWalls(cur,t);sfx('place');G.piece=newPiece();refreshEnc()}else sfx('bad')}
+});
+function rotatePiece(){if(G.piece){G.piece=rotate(G.piece);sfx('dry')}}
+addEventListener('keydown',e=>{
+  if(e.key==='r'||e.key==='R'||e.key===' '){if(G.phase==='rebuild'&&human(G.cur)){e.preventDefault();rotatePiece()}}
+  if(e.key==='Enter'){if($('ready').classList.contains('show'))$('readyBtn').click();else if((G.phase==='cannons'||G.phase==='rebuild')&&human(G.cur))endPhase()}
+});
+$('readyBtn').onclick=()=>{if(G.phase==='intro'&&G.intro.wait){actx();startPhase()}};
+$('endBtn').onclick=()=>{if((G.phase==='cannons'||G.phase==='rebuild')&&human(G.cur))endPhase()};
+$('startBtn').onclick=()=>{actx();newGame()};
+$('againBtn').onclick=()=>{actx();newGame()};
+const toMenu=()=>{G.phase='title';G.over=true;hideBanner();$('endBtn').classList.remove('show');['over','ready'].forEach(i=>$(i).classList.remove('show'));$('title').classList.add('show');lastHud='';setHud(true)};
+$('menuBtn').onclick=toMenu;$('menu2').onclick=toMenu;
+$('trk').onchange=e=>{G.trk=e.target.checked};
+$('mute').onclick=()=>{muted=!muted;$('mute').textContent='Sound: '+(muted?'off':'on')};
+document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{$('diffrow').style.visibility=document.getElementById('m-ai').checked?'visible':'hidden'});
+
+/* ================================= main loop ============================ */
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;
+  if(G.phase!=='title')update(dt);else G.time+=dt;
+  draw();setHud();setBar();
+  requestAnimationFrame(frame)}
+G.seed=12345;G.pl=[{score:0,lost:new Set()},{score:0,lost:new Set()}];genMap();
+requestAnimationFrame(frame);
+window.__G=G;window.__fn={update,draw,newGame,endPhase,claimCastle,addCannon,placeWalls,enclosure,fire};
+})();
+</script>
+</body>
+</html>
